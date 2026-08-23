@@ -162,13 +162,13 @@ A Store Owner can:
 * Log out securely
 
 ⭐ Rating System
-Requirement	           Implementation
-Rating Range	           1 to 5
-Submit Rating.          	✅ Supported
-Update Rating	           ✅ Supported
-Overall Store Rating	           ✅ Supported
-Average Rating.                  ✅ Supported
-User Rating per Store	     One rating record per user/store
+Requirement	          Implementation
+Rating Range	          1 to 5
+Submit Rating.            ✅ Supported
+Update Rating	          ✅ Supported
+Overall Store Rating	  ✅ Supported
+Average Rating.           ✅ Supported
+User Rating per Store	  One rating record per user/store
 
 🔐 Authentication & Authorization
 
@@ -207,16 +207,16 @@ Rating	               Maximum 5
 The application supports:- 
 
 Feature	Supported
-Search Store by Name	           ✅
-Search Store by Addres.          ✅
+Search Store by Name	  ✅
+Search Store by Addres.   ✅
 Filter Users	           ✅
-Filter Stores           	✅
-Filter by Name	           ✅
-Filter by Email         	✅
-Filter by Address       	✅
-Filter by Role	           ✅
-Ascending Sorting       	✅
-Descending Sorting	           ✅
+Filter Stores              ✅
+Filter by Name	          ✅
+Filter by Email            ✅
+Filter by Address          ✅
+Filter by Role	          ✅
+Ascending Sorting         ✅
+Descending Sorting	       ✅
 
 
 🗄 Database Design
@@ -271,26 +271,3 @@ https://roxiler-store-rating-j6fz.onrender.com
 
 
 
----
-
-## 📸 Screenshots
-
-### Dashboard
-
-![Dashboard](screenshots/Dashboard.png)
-
-### Admin Panel
-
-![Admin Panel](screenshots/Admin%20panel.png)
-
-### Normal User
-
-![Normal User](screenshots/Normal%20user.png)
-
-### User Management
-
-![User Management](screenshots/User%20management.png)
-
-### Change Password
-
-![Change Password](screenshots/Change%20password.png)
