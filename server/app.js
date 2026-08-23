@@ -167,12 +167,9 @@ app.use((req, res, next) => {
     req.method === "GET" &&
     !req.originalUrl.startsWith("/api/")
   ) {
-    return res.sendFile(
-      path.join(
-        clientDistPath,
-        "index.html"
-      )
-    );
+    return res.status(404).json({
+  message: "Frontend is deployed separately"
+});
   }
 
   next();

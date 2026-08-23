@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Stores from "./pages/Stores";
+import ChangePassword from "./pages/ChangePassword";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -33,7 +34,6 @@ function HomeRedirect() {
 function App() {
   return (
     <Routes>
-
       {/* =========================
           AUTH
       ========================= */}
@@ -57,6 +57,20 @@ function App() {
         element={
           <ProtectedRoute>
             <Stores />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* =========================
+          CHANGE PASSWORD
+          Available to all logged-in users
+      ========================= */}
+
+      <Route
+        path="/change-password"
+        element={
+          <ProtectedRoute>
+            <ChangePassword />
           </ProtectedRoute>
         }
       />
@@ -117,7 +131,6 @@ function App() {
         path="*"
         element={<HomeRedirect />}
       />
-
     </Routes>
   );
 }

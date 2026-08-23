@@ -313,6 +313,13 @@ export default function Stores() {
               📊 Dashboard
             </button>
           )}
+<button
+  type="button"
+  style={styles.dashboardButton}
+  onClick={() => navigate("/change-password")}
+>
+  🔒 Change Password
+</button>
 
           <button
             type="button"

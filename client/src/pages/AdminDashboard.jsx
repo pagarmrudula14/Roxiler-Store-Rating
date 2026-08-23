@@ -730,14 +730,22 @@ export default function AdminDashboard() {
             🏪 Stores
           </button>
 
-        </nav>
+      </nav>
 
-        <button
-          style={styles.logout}
-          onClick={handleLogout}
-        >
-          ↪ Logout
-        </button>
+<button
+  style={styles.navButton}
+  onClick={() => navigate("/change-password")}
+>
+  🔒 Change Password
+</button>
+
+<button
+  style={styles.logout}
+  onClick={handleLogout}
+>
+  ↪ Logout
+</button>
+
 
       </aside>
 

@@ -3,26 +3,16 @@ import axios from "axios";
 // =====================================================
 // AXIOS API CLIENT
 // =====================================================
-//
-// Development:
-// VITE_API_URL can point to:
-// http://localhost:5001/api
-//
-// Production:
-// If VITE_API_URL is not provided, "/api" is used.
-// This allows React and Express to work from the
-// same deployed domain.
-//
-// =====================================================
+
 const api = axios.create({
   baseURL:
-    import.meta.env.VITE_API_URL || "http://localhost:5001/api",
+    import.meta.env.VITE_API_URL ||
+    "https://roxiler-store-rating-j6fz.onrender.com/api",
 
   headers: {
     "Content-Type": "application/json",
   },
 });
-
 
 // =====================================================
 // ATTACH JWT TOKEN TO EVERY REQUEST
@@ -30,12 +20,10 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const token =
-      localStorage.getItem("roxiler_token");
+    const token = localStorage.getItem("roxiler_token");
 
     if (token) {
-      config.headers.Authorization =
-        `Bearer ${token}`;
+      config.headers.Authorization = `Bearer ${token}`;
     }
 
     return config;
@@ -54,31 +42,16 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    // -------------------------------------------------
     // TOKEN EXPIRED / INVALID
-    // -------------------------------------------------
+    if (error.response?.status === 401) {
+      const currentPath = window.location.pathname;
 
-    if (
-      error.response?.status === 401
-    ) {
-      const currentPath =
-        window.location.pathname;
+      // Don't redirect if already on login page
+      if (currentPath !== "/login") {
+        localStorage.removeItem("roxiler_token");
+        localStorage.removeItem("roxiler_user");
 
-      // Don't automatically redirect if already
-      // on the login page.
-      if (
-        currentPath !== "/login"
-      ) {
-        localStorage.removeItem(
-          "roxiler_token"
-        );
-
-        localStorage.removeItem(
-          "roxiler_user"
-        );
-
-        window.location.href =
-          "/login";
+        window.location.href = "/login";
       }
     }
 
