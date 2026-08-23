@@ -1,6 +1,7 @@
 {
   "name": "roxiler-rating-server",
   "version": "1.0.0",
+  "description": "Roxiler Store Rating System backend",
   "main": "server.js",
   "scripts": {
     "dev": "nodemon server.js",

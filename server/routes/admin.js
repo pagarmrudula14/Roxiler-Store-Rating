@@ -1,9 +1,7 @@
 const express = require("express");
-
 const bcrypt = require("bcryptjs");
 
 const router = express.Router();
-
 const authenticateToken = require("../middleware/auth");
 
 // =====================================================
@@ -17,7 +15,7 @@ router.use(authenticateToken);
 // =====================================================
 
 router.use((req, res, next) => {
-  if (req.user.role !== "ADMIN") {
+  if (!req.user || req.user.role !== "ADMIN") {
     return res.status(403).json({
       message: "Administrator access required",
     });
@@ -30,8 +28,7 @@ router.use((req, res, next) => {
 // VALIDATION HELPERS
 // =====================================================
 
-const emailRegex =
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const validatePassword = (password) => {
   if (
@@ -75,23 +72,12 @@ router.get("/dashboard", async (req, res) => {
     );
 
     return res.json({
-      totalUsers: Number(
-        usersResult.totalUsers
-      ),
-
-      totalStores: Number(
-        storesResult.totalStores
-      ),
-
-      totalRatings: Number(
-        ratingsResult.totalRatings
-      ),
+      totalUsers: Number(usersResult.totalUsers || 0),
+      totalStores: Number(storesResult.totalStores || 0),
+      totalRatings: Number(ratingsResult.totalRatings || 0),
     });
   } catch (error) {
-    console.error(
-      "Admin dashboard error:",
-      error
-    );
+    console.error("Admin dashboard error:", error);
 
     return res.status(500).json({
       message: "Unable to load admin dashboard",
@@ -104,12 +90,12 @@ router.get("/dashboard", async (req, res) => {
 // GET /api/admin/users
 //
 // Includes:
-//
 // - Name
 // - Email
 // - Address
 // - Role
 // - Store Owner average rating
+// - Total ratings
 // - Sorting
 // - Name filter
 // - Email filter
@@ -140,11 +126,11 @@ router.get("/users", async (req, res) => {
       address: "u.address",
       role: "u.role",
       rating: "owner_rating",
+      total_ratings: "total_ratings",
     };
 
     const sortColumn =
-      allowedSortFields[sortBy] ||
-      "u.name";
+      allowedSortFields[sortBy] || "u.name";
 
     const sortOrder =
       String(order).toLowerCase() === "desc"
@@ -168,7 +154,7 @@ router.get("/users", async (req, res) => {
           COALESCE(
             AVG(
               CASE
-                WHEN u.role = 'OWNER'
+                WHEN u.role = 'STORE_OWNER'
                 THEN r.rating
                 ELSE NULL
               END
@@ -180,7 +166,7 @@ router.get("/users", async (req, res) => {
 
         COUNT(
           CASE
-            WHEN u.role = 'OWNER'
+            WHEN u.role = 'STORE_OWNER'
             THEN r.id
             ELSE NULL
           END
@@ -208,9 +194,7 @@ router.get("/users", async (req, res) => {
         AND u.name LIKE ?
       `;
 
-      params.push(
-        `%${String(name).trim()}%`
-      );
+      params.push(`%${String(name).trim()}%`);
     }
 
     // -------------------------------------------------
@@ -222,9 +206,7 @@ router.get("/users", async (req, res) => {
         AND u.email LIKE ?
       `;
 
-      params.push(
-        `%${String(email).trim()}%`
-      );
+      params.push(`%${String(email).trim()}%`);
     }
 
     // -------------------------------------------------
@@ -236,9 +218,7 @@ router.get("/users", async (req, res) => {
         AND u.address LIKE ?
       `;
 
-      params.push(
-        `%${String(address).trim()}%`
-      );
+      params.push(`%${String(address).trim()}%`);
     }
 
     // -------------------------------------------------
@@ -248,7 +228,7 @@ router.get("/users", async (req, res) => {
     if (String(role).trim()) {
       const allowedRoles = [
         "USER",
-        "OWNER",
+        "STORE_OWNER",
         "ADMIN",
       ];
 
@@ -302,48 +282,33 @@ router.get("/users", async (req, res) => {
     // FORMAT USERS
     // -------------------------------------------------
 
-    const formattedUsers =
-      users.map((user) => ({
-        id: Number(user.id),
+    const formattedUsers = users.map((user) => ({
+      id: Number(user.id),
 
-        name:
-          user.name || "",
+      name: user.name || "",
 
-        email:
-          user.email || "",
+      email: user.email || "",
 
-        address:
-          user.address || "",
+      address: user.address || "",
 
-        role:
-          user.role || "",
+      role: user.role || "",
 
-        rating:
-          user.role === "OWNER"
-            ? Number(
-                user.owner_rating || 0
-              )
-            : 0,
+      rating:
+        user.role === "STORE_OWNER"
+          ? Number(user.owner_rating || 0)
+          : 0,
 
-        total_ratings:
-          user.role === "OWNER"
-            ? Number(
-                user.total_ratings || 0
-              )
-            : 0,
+      total_ratings:
+        user.role === "STORE_OWNER"
+          ? Number(user.total_ratings || 0)
+          : 0,
 
-        created_at:
-          user.created_at || null,
-      }));
+      created_at: user.created_at || null,
+    }));
 
-    return res.json(
-      formattedUsers
-    );
+    return res.json(formattedUsers);
   } catch (error) {
-    console.error(
-      "Get admin users error:",
-      error
-    );
+    console.error("Get admin users error:", error);
 
     return res.status(500).json({
       message: "Unable to load users",
@@ -354,141 +319,126 @@ router.get("/users", async (req, res) => {
 // =====================================================
 // GET USER DETAILS
 // GET /api/admin/users/:id
-//
-// Includes Store Owner rating when applicable.
 // =====================================================
 
-router.get(
-  "/users/:id",
-  async (req, res) => {
-    try {
-      const db = req.app.locals.db;
+router.get("/users/:id", async (req, res) => {
+  try {
+    const db = req.app.locals.db;
 
-      const userId = Number(
-        req.params.id
-      );
+    const userId = Number(req.params.id);
 
-      // -------------------------------------------------
-      // VALIDATE USER ID
-      // -------------------------------------------------
+    // -------------------------------------------------
+    // VALIDATE USER ID
+    // -------------------------------------------------
 
-      if (
-        !Number.isInteger(userId) ||
-        userId <= 0
-      ) {
-        return res.status(400).json({
-          message: "Invalid user ID",
-        });
-      }
-
-      // -------------------------------------------------
-      // GET USER DETAILS
-      // -------------------------------------------------
-
-      const [users] =
-        await db.query(
-          `
-          SELECT
-            u.id,
-            u.name,
-            u.email,
-            u.address,
-            u.role,
-
-            ROUND(
-              COALESCE(
-                AVG(
-                  CASE
-                    WHEN u.role = 'OWNER'
-                    THEN r.rating
-                    ELSE NULL
-                  END
-                ),
-                0
-              ),
-              1
-            ) AS rating,
-
-            COUNT(
-              CASE
-                WHEN u.role = 'OWNER'
-                THEN r.id
-                ELSE NULL
-              END
-            ) AS total_ratings
-
-          FROM users u
-
-          LEFT JOIN stores s
-            ON s.owner_id = u.id
-
-          LEFT JOIN ratings r
-            ON r.store_id = s.id
-
-          WHERE u.id = ?
-
-          GROUP BY
-            u.id,
-            u.name,
-            u.email,
-            u.address,
-            u.role
-          `,
-          [userId]
-        );
-
-      if (users.length === 0) {
-        return res.status(404).json({
-          message: "User not found",
-        });
-      }
-
-      const user = users[0];
-
-      // -------------------------------------------------
-      // RESPONSE
-      // -------------------------------------------------
-
-      return res.json({
-        id: Number(user.id),
-
-        name:
-          user.name || "",
-
-        email:
-          user.email || "",
-
-        address:
-          user.address || "",
-
-        role:
-          user.role || "",
-
-        rating:
-          user.role === "OWNER"
-            ? Number(user.rating || 0)
-            : 0,
-
-        total_ratings:
-          user.role === "OWNER"
-            ? Number(
-                user.total_ratings || 0
-              )
-            : 0,
-      });
-    } catch (error) {
-      console.error(
-        "Get admin user details error:",
-        error
-      );
-
-      return res.status(500).json({
-        message:
-          "Unable to load user details",
+    if (
+      !Number.isInteger(userId) ||
+      userId <= 0
+    ) {
+      return res.status(400).json({
+        message: "Invalid user ID",
       });
     }
+
+    // -------------------------------------------------
+    // GET USER DETAILS
+    // -------------------------------------------------
+
+    const [users] = await db.query(
+      `
+      SELECT
+        u.id,
+        u.name,
+        u.email,
+        u.address,
+        u.role,
+
+        ROUND(
+          COALESCE(
+            AVG(
+              CASE
+                WHEN u.role = 'STORE_OWNER'
+                THEN r.rating
+                ELSE NULL
+              END
+            ),
+            0
+          ),
+          1
+        ) AS rating,
+
+        COUNT(
+          CASE
+            WHEN u.role = 'STORE_OWNER'
+            THEN r.id
+            ELSE NULL
+          END
+        ) AS total_ratings
+
+      FROM users u
+
+      LEFT JOIN stores s
+        ON s.owner_id = u.id
+
+      LEFT JOIN ratings r
+        ON r.store_id = s.id
+
+      WHERE u.id = ?
+
+      GROUP BY
+        u.id,
+        u.name,
+        u.email,
+        u.address,
+        u.role
+      `,
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    const user = users[0];
+
+    // -------------------------------------------------
+    // RESPONSE
+    // -------------------------------------------------
+
+    return res.json({
+      id: Number(user.id),
+
+      name: user.name || "",
+
+      email: user.email || "",
+
+      address: user.address || "",
+
+      role: user.role || "",
+
+      rating:
+        user.role === "STORE_OWNER"
+          ? Number(user.rating || 0)
+          : 0,
+
+      total_ratings:
+        user.role === "STORE_OWNER"
+          ? Number(user.total_ratings || 0)
+          : 0,
+    });
+  } catch (error) {
+    console.error(
+      "Get admin user details error:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Unable to load user details",
+    });
   }
-);
+});
 
 // =====================================================
 // CREATE USER
@@ -527,13 +477,244 @@ router.post("/users", async (req, res) => {
     // CLEAN INPUT
     // -------------------------------------------------
 
-    const cleanName =
-      String(name).trim();
+    const cleanName = String(name).trim();
 
-    const cleanEmail =
-      String(email)
-        .trim()
-        .toLowerCase();
+    const cleanEmail = String(email)
+      .trim()
+      .toLowerCase();
+
+    const cleanAddress = String(address).trim();
+
+    // -------------------------------------------------
+    // NAME VALIDATION
+    // -------------------------------------------------
+
+    if (
+      cleanName.length < 20 ||
+      cleanName.length > 60
+    ) {
+      return res.status(400).json({
+        message:
+          "Name must be between 20 and 60 characters",
+      });
+    }
+
+    // -------------------------------------------------
+    // EMAIL VALIDATION
+    // -------------------------------------------------
+
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({
+        message:
+          "Please enter a valid email address",
+      });
+    }
+
+    // -------------------------------------------------
+    // ADDRESS VALIDATION
+    // -------------------------------------------------
+
+    if (cleanAddress.length > 400) {
+      return res.status(400).json({
+        message:
+          "Address must not exceed 400 characters",
+      });
+    }
+
+    // -------------------------------------------------
+    // PASSWORD VALIDATION
+    // -------------------------------------------------
+
+    const passwordError =
+      validatePassword(password);
+
+    if (passwordError) {
+      return res.status(400).json({
+        message: passwordError,
+      });
+    }
+
+    // -------------------------------------------------
+    // ROLE VALIDATION
+    // -------------------------------------------------
+
+    const allowedRoles = [
+      "USER",
+      "STORE_OWNER",
+      "ADMIN",
+    ];
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({
+        message: "Invalid role",
+      });
+    }
+
+    // -------------------------------------------------
+    // DUPLICATE EMAIL
+    // -------------------------------------------------
+
+    const [existing] = await db.query(
+      `
+      SELECT id
+      FROM users
+      WHERE email = ?
+      LIMIT 1
+      `,
+      [cleanEmail]
+    );
+
+    if (existing.length > 0) {
+      return res.status(409).json({
+        message:
+          "Email already registered",
+      });
+    }
+
+    // -------------------------------------------------
+    // HASH PASSWORD
+    // -------------------------------------------------
+
+    const hashedPassword =
+      await bcrypt.hash(password, 10);
+
+    // -------------------------------------------------
+    // INSERT USER
+    // -------------------------------------------------
+
+    const [result] = await db.query(
+      `
+      INSERT INTO users
+      (
+        name,
+        email,
+        password,
+        address,
+        role
+      )
+      VALUES (?, ?, ?, ?, ?)
+      `,
+      [
+        cleanName,
+        cleanEmail,
+        hashedPassword,
+        cleanAddress,
+        role,
+      ]
+    );
+
+    // -------------------------------------------------
+    // RESPONSE
+    // -------------------------------------------------
+
+    return res.status(201).json({
+      message: "User created successfully",
+
+      user: {
+        id: result.insertId,
+        name: cleanName,
+        email: cleanEmail,
+        address: cleanAddress,
+        role,
+      },
+    });
+  } catch (error) {
+    console.error("Create user error:", error);
+
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({
+        message:
+          "Email already registered",
+      });
+    }
+
+    return res.status(500).json({
+      message: "Unable to create user",
+    });
+  }
+});
+
+// =====================================================
+// UPDATE USER
+// PUT /api/admin/users/:id
+// =====================================================
+
+router.put("/users/:id", async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+
+    const userId = Number(req.params.id);
+
+    // -------------------------------------------------
+    // VALIDATE USER ID
+    // -------------------------------------------------
+
+    if (
+      !Number.isInteger(userId) ||
+      userId <= 0
+    ) {
+      return res.status(400).json({
+        message: "Invalid user ID",
+      });
+    }
+
+    const {
+      name,
+      email,
+      address,
+      role,
+      password,
+    } = req.body;
+
+    // -------------------------------------------------
+    // CHECK USER EXISTS
+    // -------------------------------------------------
+
+    const [users] = await db.query(
+      `
+      SELECT
+        id,
+        name,
+        email,
+        address,
+        role
+      FROM users
+      WHERE id = ?
+      `,
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    // -------------------------------------------------
+    // REQUIRED FIELDS
+    // -------------------------------------------------
+
+    if (
+      !name ||
+      !email ||
+      !address ||
+      !role
+    ) {
+      return res.status(400).json({
+        message:
+          "Name, email, address and role are required",
+      });
+    }
+
+    // -------------------------------------------------
+    // CLEAN INPUT
+    // -------------------------------------------------
+
+    const cleanName = String(name).trim();
+
+    const cleanEmail = String(email)
+      .trim()
+      .toLowerCase();
 
     const cleanAddress =
       String(address).trim();
@@ -567,25 +748,10 @@ router.post("/users", async (req, res) => {
     // ADDRESS VALIDATION
     // -------------------------------------------------
 
-    if (
-      cleanAddress.length > 400
-    ) {
+    if (cleanAddress.length > 400) {
       return res.status(400).json({
         message:
           "Address must not exceed 400 characters",
-      });
-    }
-
-    // -------------------------------------------------
-    // PASSWORD VALIDATION
-    // -------------------------------------------------
-
-    const passwordError =
-      validatePassword(password);
-
-    if (passwordError) {
-      return res.status(400).json({
-        message: passwordError,
       });
     }
 
@@ -595,15 +761,51 @@ router.post("/users", async (req, res) => {
 
     const allowedRoles = [
       "USER",
-      "OWNER",
+      "STORE_OWNER",
       "ADMIN",
     ];
 
-    if (
-      !allowedRoles.includes(role)
-    ) {
+    if (!allowedRoles.includes(role)) {
       return res.status(400).json({
         message: "Invalid role",
+      });
+    }
+
+    // -------------------------------------------------
+    // PREVENT ADMIN FROM REMOVING OWN ADMIN ROLE
+    // -------------------------------------------------
+
+    if (
+      userId === Number(req.user.id) &&
+      role !== "ADMIN"
+    ) {
+      return res.status(400).json({
+        message:
+          "You cannot remove your own administrator role",
+      });
+    }
+
+    // -------------------------------------------------
+    // CHECK IF USER OWNS STORES
+    // -------------------------------------------------
+
+    const [ownedStores] = await db.query(
+      `
+      SELECT id
+      FROM stores
+      WHERE owner_id = ?
+      LIMIT 1
+      `,
+      [userId]
+    );
+
+    if (
+      ownedStores.length > 0 &&
+      role !== "STORE_OWNER"
+    ) {
+      return res.status(400).json({
+        message:
+          "This user owns a store and must remain STORE_OWNER",
       });
     }
 
@@ -611,18 +813,22 @@ router.post("/users", async (req, res) => {
     // DUPLICATE EMAIL
     // -------------------------------------------------
 
-    const [existing] =
+    const [duplicateEmail] =
       await db.query(
         `
         SELECT id
         FROM users
         WHERE email = ?
+        AND id <> ?
         LIMIT 1
         `,
-        [cleanEmail]
+        [
+          cleanEmail,
+          userId,
+        ]
       );
 
-    if (existing.length > 0) {
+    if (duplicateEmail.length > 0) {
       return res.status(409).json({
         message:
           "Email already registered",
@@ -630,73 +836,100 @@ router.post("/users", async (req, res) => {
     }
 
     // -------------------------------------------------
-    // HASH PASSWORD
+    // UPDATE WITH PASSWORD
     // -------------------------------------------------
 
-    const hashedPassword =
-      await bcrypt.hash(
-        password,
-        10
-      );
+    if (
+      password &&
+      String(password).length > 0
+    ) {
+      const cleanPassword =
+        String(password);
 
-    // -------------------------------------------------
-    // INSERT USER
-    // -------------------------------------------------
+      const passwordError =
+        validatePassword(
+          cleanPassword
+        );
 
-    const [result] =
+      if (passwordError) {
+        return res.status(400).json({
+          message: passwordError,
+        });
+      }
+
+      const hashedPassword =
+        await bcrypt.hash(
+          cleanPassword,
+          10
+        );
+
       await db.query(
         `
-        INSERT INTO users
-        (
-          name,
-          email,
-          password,
-          address,
-          role
-        )
-        VALUES (?, ?, ?, ?, ?)
+        UPDATE users
+        SET
+          name = ?,
+          email = ?,
+          address = ?,
+          role = ?,
+          password = ?
+        WHERE id = ?
         `,
         [
           cleanName,
           cleanEmail,
-          hashedPassword,
           cleanAddress,
           role,
+          hashedPassword,
+          userId,
         ]
       );
+    } else {
+      // -------------------------------------------------
+      // UPDATE WITHOUT PASSWORD
+      // -------------------------------------------------
+
+      await db.query(
+        `
+        UPDATE users
+        SET
+          name = ?,
+          email = ?,
+          address = ?,
+          role = ?
+        WHERE id = ?
+        `,
+        [
+          cleanName,
+          cleanEmail,
+          cleanAddress,
+          role,
+          userId,
+        ]
+      );
+    }
 
     // -------------------------------------------------
     // RESPONSE
     // -------------------------------------------------
 
-    return res.status(201).json({
-      message:
-        "User created successfully",
+    return res.json({
+      message: "User updated successfully",
 
       user: {
-        id: result.insertId,
-
-        name:
-          cleanName,
-
-        email:
-          cleanEmail,
-
-        address:
-          cleanAddress,
-
+        id: userId,
+        name: cleanName,
+        email: cleanEmail,
+        address: cleanAddress,
         role,
       },
     });
   } catch (error) {
     console.error(
-      "Create user error:",
+      "Update user error:",
       error
     );
 
-    if (
-      error.code === "ER_DUP_ENTRY"
-    ) {
+    if (error.code === "ER_DUP_ENTRY") {
       return res.status(409).json({
         message:
           "Email already registered",
@@ -705,1193 +938,798 @@ router.post("/users", async (req, res) => {
 
     return res.status(500).json({
       message:
-        "Unable to create user",
+        "Unable to update user",
     });
   }
 });
-
-// =====================================================
-// UPDATE USER
-// PUT /api/admin/users/:id
-// =====================================================
-
-router.put(
-  "/users/:id",
-  async (req, res) => {
-    try {
-      const db = req.app.locals.db;
-
-      const userId = Number(
-        req.params.id
-      );
-
-      // -------------------------------------------------
-      // VALIDATE USER ID
-      // -------------------------------------------------
-
-      if (
-        !Number.isInteger(userId) ||
-        userId <= 0
-      ) {
-        return res.status(400).json({
-          message: "Invalid user ID",
-        });
-      }
-
-      const {
-        name,
-        email,
-        address,
-        role,
-        password,
-      } = req.body;
-
-      // -------------------------------------------------
-      // CHECK USER EXISTS
-      // -------------------------------------------------
-
-      const [users] =
-        await db.query(
-          `
-          SELECT
-            id,
-            name,
-            email,
-            address,
-            role
-          FROM users
-          WHERE id = ?
-          `,
-          [userId]
-        );
-
-      if (users.length === 0) {
-        return res.status(404).json({
-          message: "User not found",
-        });
-      }
-
-      // -------------------------------------------------
-      // REQUIRED FIELDS
-      // -------------------------------------------------
-
-      if (
-        !name ||
-        !email ||
-        !address ||
-        !role
-      ) {
-        return res.status(400).json({
-          message:
-            "Name, email, address and role are required",
-        });
-      }
-
-      // -------------------------------------------------
-      // CLEAN INPUT
-      // -------------------------------------------------
-
-      const cleanName =
-        String(name).trim();
-
-      const cleanEmail =
-        String(email)
-          .trim()
-          .toLowerCase();
-
-      const cleanAddress =
-        String(address).trim();
-
-      // -------------------------------------------------
-      // NAME VALIDATION
-      // -------------------------------------------------
-
-      if (
-        cleanName.length < 20 ||
-        cleanName.length > 60
-      ) {
-        return res.status(400).json({
-          message:
-            "Name must be between 20 and 60 characters",
-        });
-      }
-
-      // -------------------------------------------------
-      // EMAIL VALIDATION
-      // -------------------------------------------------
-
-      if (!emailRegex.test(cleanEmail)) {
-        return res.status(400).json({
-          message:
-            "Please enter a valid email address",
-        });
-      }
-
-      // -------------------------------------------------
-      // ADDRESS VALIDATION
-      // -------------------------------------------------
-
-      if (
-        cleanAddress.length > 400
-      ) {
-        return res.status(400).json({
-          message:
-            "Address must not exceed 400 characters",
-        });
-      }
-
-      // -------------------------------------------------
-      // ROLE VALIDATION
-      // -------------------------------------------------
-
-      const allowedRoles = [
-        "USER",
-        "OWNER",
-        "ADMIN",
-      ];
-
-      if (
-        !allowedRoles.includes(role)
-      ) {
-        return res.status(400).json({
-          message: "Invalid role",
-        });
-      }
-
-      // -------------------------------------------------
-      // PREVENT ADMIN FROM REMOVING OWN ADMIN ROLE
-      // -------------------------------------------------
-
-      if (
-        userId === Number(req.user.id) &&
-        role !== "ADMIN"
-      ) {
-        return res.status(400).json({
-          message:
-            "You cannot remove your own administrator role",
-        });
-      }
-
-      // -------------------------------------------------
-      // CHECK IF USER OWNS STORES
-      // -------------------------------------------------
-
-      const [ownedStores] =
-        await db.query(
-          `
-          SELECT id
-          FROM stores
-          WHERE owner_id = ?
-          LIMIT 1
-          `,
-          [userId]
-        );
-
-      if (
-        ownedStores.length > 0 &&
-        role !== "OWNER"
-      ) {
-        return res.status(400).json({
-          message:
-            "This user owns a store and must remain OWNER",
-        });
-      }
-
-      // -------------------------------------------------
-      // DUPLICATE EMAIL
-      // -------------------------------------------------
-
-      const [duplicateEmail] =
-        await db.query(
-          `
-          SELECT id
-          FROM users
-          WHERE email = ?
-          AND id <> ?
-          LIMIT 1
-          `,
-          [
-            cleanEmail,
-            userId,
-          ]
-        );
-
-      if (
-        duplicateEmail.length > 0
-      ) {
-        return res.status(409).json({
-          message:
-            "Email already registered",
-        });
-      }
-
-      // -------------------------------------------------
-      // UPDATE WITH PASSWORD
-      // -------------------------------------------------
-
-      if (
-        password &&
-        String(password).length > 0
-      ) {
-        const cleanPassword =
-          String(password);
-
-        const passwordError =
-          validatePassword(
-            cleanPassword
-          );
-
-        if (passwordError) {
-          return res.status(400).json({
-            message:
-              passwordError,
-          });
-        }
-
-        const hashedPassword =
-          await bcrypt.hash(
-            cleanPassword,
-            10
-          );
-
-        await db.query(
-          `
-          UPDATE users
-          SET
-            name = ?,
-            email = ?,
-            address = ?,
-            role = ?,
-            password = ?
-          WHERE id = ?
-          `,
-          [
-            cleanName,
-            cleanEmail,
-            cleanAddress,
-            role,
-            hashedPassword,
-            userId,
-          ]
-        );
-      } else {
-        // -------------------------------------------------
-        // UPDATE WITHOUT PASSWORD
-        // -------------------------------------------------
-
-        await db.query(
-          `
-          UPDATE users
-          SET
-            name = ?,
-            email = ?,
-            address = ?,
-            role = ?
-          WHERE id = ?
-          `,
-          [
-            cleanName,
-            cleanEmail,
-            cleanAddress,
-            role,
-            userId,
-          ]
-        );
-      }
-
-      // -------------------------------------------------
-      // RESPONSE
-      // -------------------------------------------------
-
-      return res.json({
-        message:
-          "User updated successfully",
-
-        user: {
-          id: userId,
-
-          name:
-            cleanName,
-
-          email:
-            cleanEmail,
-
-          address:
-            cleanAddress,
-
-          role,
-        },
-      });
-    } catch (error) {
-      console.error(
-        "Update user error:",
-        error
-      );
-
-      if (
-        error.code === "ER_DUP_ENTRY"
-      ) {
-        return res.status(409).json({
-          message:
-            "Email already registered",
-        });
-      }
-
-      return res.status(500).json({
-        message:
-          "Unable to update user",
-      });
-    }
-  }
-);
 
 // =====================================================
 // DELETE USER
 // DELETE /api/admin/users/:id
 // =====================================================
 
-router.delete(
-  "/users/:id",
-  async (req, res) => {
-    try {
-      const db = req.app.locals.db;
+router.delete("/users/:id", async (req, res) => {
+  try {
+    const db = req.app.locals.db;
 
-      const userId = Number(
-        req.params.id
-      );
+    const userId = Number(req.params.id);
 
-      // -------------------------------------------------
-      // VALIDATE USER ID
-      // -------------------------------------------------
+    // -------------------------------------------------
+    // VALIDATE USER ID
+    // -------------------------------------------------
 
-      if (
-        !Number.isInteger(userId) ||
-        userId <= 0
-      ) {
-        return res.status(400).json({
-          message: "Invalid user ID",
-        });
-      }
+    if (
+      !Number.isInteger(userId) ||
+      userId <= 0
+    ) {
+      return res.status(400).json({
+        message: "Invalid user ID",
+      });
+    }
 
-      // -------------------------------------------------
-      // PREVENT SELF DELETE
-      // -------------------------------------------------
+    // -------------------------------------------------
+    // PREVENT SELF DELETE
+    // -------------------------------------------------
 
-      if (
-        userId === Number(req.user.id)
-      ) {
-        return res.status(400).json({
-          message:
-            "You cannot delete your own administrator account",
-        });
-      }
+    if (
+      userId === Number(req.user.id)
+    ) {
+      return res.status(400).json({
+        message:
+          "You cannot delete your own administrator account",
+      });
+    }
 
-      // -------------------------------------------------
-      // CHECK USER
-      // -------------------------------------------------
+    // -------------------------------------------------
+    // CHECK USER
+    // -------------------------------------------------
 
-      const [users] =
-        await db.query(
-          `
-          SELECT
-            id,
-            role
-          FROM users
-          WHERE id = ?
-          `,
-          [userId]
-        );
+    const [users] = await db.query(
+      `
+      SELECT
+        id,
+        role
+      FROM users
+      WHERE id = ?
+      `,
+      [userId]
+    );
 
-      if (users.length === 0) {
-        return res.status(404).json({
-          message: "User not found",
-        });
-      }
+    if (users.length === 0) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
 
-      // -------------------------------------------------
-      // CHECK OWNED STORES
-      // -------------------------------------------------
+    // -------------------------------------------------
+    // CHECK OWNED STORES
+    // -------------------------------------------------
 
-      const [ownedStores] =
-        await db.query(
-          `
-          SELECT
-            id,
-            name
-          FROM stores
-          WHERE owner_id = ?
-          `,
-          [userId]
-        );
-
-      if (ownedStores.length > 0) {
-        return res.status(400).json({
-          message:
-            "Cannot delete this user because they own one or more stores",
-          stores: ownedStores,
-        });
-      }
-
-      // -------------------------------------------------
-      // DELETE USER
-      //
-      // ratings.user_id should have
-      // ON DELETE CASCADE
-      // -------------------------------------------------
-
+    const [ownedStores] =
       await db.query(
         `
-        DELETE FROM users
-        WHERE id = ?
+        SELECT
+          id,
+          name
+        FROM stores
+        WHERE owner_id = ?
         `,
         [userId]
       );
 
-      // -------------------------------------------------
-      // RESPONSE
-      // -------------------------------------------------
-
-      return res.json({
+    if (ownedStores.length > 0) {
+      return res.status(400).json({
         message:
-          "User deleted successfully",
-      });
-    } catch (error) {
-      console.error(
-        "Delete user error:",
-        error
-      );
-
-      return res.status(500).json({
-        message:
-          "Unable to delete user",
+          "Cannot delete this user because they own one or more stores",
+        stores: ownedStores,
       });
     }
+
+    // -------------------------------------------------
+    // DELETE USER
+    // -------------------------------------------------
+
+    await db.query(
+      `
+      DELETE FROM users
+      WHERE id = ?
+      `,
+      [userId]
+    );
+
+    // -------------------------------------------------
+    // RESPONSE
+    // -------------------------------------------------
+
+    return res.json({
+      message:
+        "User deleted successfully",
+    });
+  } catch (error) {
+    console.error(
+      "Delete user error:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Unable to delete user",
+    });
   }
-);
+});
 
 // =====================================================
 // GET STORES
 // GET /api/admin/stores
-//
-// Includes:
-//
-// - Name
-// - Email
-// - Address
-// - Rating
-// - Owner
-// - Total ratings
-// - Search
-// - Sorting
 // =====================================================
 
-router.get(
-  "/stores",
-  async (req, res) => {
-    try {
-      const db = req.app.locals.db;
+router.get("/stores", async (req, res) => {
+  try {
+    const db = req.app.locals.db;
 
-      const {
-        name = "",
-        email = "",
-        address = "",
-        owner_id = "",
-        sortBy = "name",
-        order = "asc",
-      } = req.query;
+    const {
+      name = "",
+      email = "",
+      address = "",
+      owner_id = "",
+      sortBy = "name",
+      order = "asc",
+    } = req.query;
 
-      // -------------------------------------------------
-      // SAFE SORTING
-      // -------------------------------------------------
+    // -------------------------------------------------
+    // SAFE SORTING
+    // -------------------------------------------------
 
-      const allowedSortFields = {
-        name: "s.name",
-        email: "s.email",
-        address: "s.address",
-        owner: "u.name",
-        rating: "average_rating",
-        total_ratings:
-          "total_ratings",
-      };
+    const allowedSortFields = {
+      name: "s.name",
+      email: "s.email",
+      address: "s.address",
+      owner: "u.name",
+      rating: "average_rating",
+      total_ratings: "total_ratings",
+    };
 
-      const sortColumn =
-        allowedSortFields[sortBy] ||
-        "s.name";
+    const sortColumn =
+      allowedSortFields[sortBy] ||
+      "s.name";
 
-      const sortOrder =
-        String(order).toLowerCase() ===
-        "desc"
-          ? "DESC"
-          : "ASC";
+    const sortOrder =
+      String(order).toLowerCase() === "desc"
+        ? "DESC"
+        : "ASC";
 
-      // -------------------------------------------------
-      // BASE QUERY
-      // -------------------------------------------------
+    // -------------------------------------------------
+    // BASE QUERY
+    // -------------------------------------------------
 
-      let query = `
-        SELECT
-          s.id,
-          s.name,
-          s.email,
-          s.address,
-          s.owner_id,
+    let query = `
+      SELECT
+        s.id,
+        s.name,
+        s.email,
+        s.address,
+        s.owner_id,
 
-          u.name AS owner_name,
-          u.email AS owner_email,
+        u.name AS owner_name,
+        u.email AS owner_email,
 
-          ROUND(
-            COALESCE(
-              AVG(r.rating),
-              0
-            ),
-            1
-          ) AS average_rating,
+        ROUND(
+          COALESCE(
+            AVG(r.rating),
+            0
+          ),
+          1
+        ) AS average_rating,
 
-          COUNT(r.id) AS total_ratings
+        COUNT(r.id) AS total_ratings
 
-        FROM stores s
+      FROM stores s
 
-        LEFT JOIN users u
-          ON s.owner_id = u.id
+      LEFT JOIN users u
+        ON s.owner_id = u.id
 
-        LEFT JOIN ratings r
-          ON s.id = r.store_id
+      LEFT JOIN ratings r
+        ON s.id = r.store_id
 
-        WHERE 1 = 1
+      WHERE 1 = 1
+    `;
+
+    const params = [];
+
+    // -------------------------------------------------
+    // SEARCH NAME
+    // -------------------------------------------------
+
+    if (String(name).trim()) {
+      query += `
+        AND s.name LIKE ?
       `;
 
-      const params = [];
+      params.push(
+        `%${String(name).trim()}%`
+      );
+    }
 
-      // -------------------------------------------------
-      // SEARCH NAME
-      // -------------------------------------------------
+    // -------------------------------------------------
+    // SEARCH EMAIL
+    // -------------------------------------------------
 
-      if (String(name).trim()) {
-        query += `
-          AND s.name LIKE ?
-        `;
+    if (String(email).trim()) {
+      query += `
+        AND s.email LIKE ?
+      `;
 
-        params.push(
-          `%${String(name).trim()}%`
-        );
-      }
+      params.push(
+        `%${String(email).trim()}%`
+      );
+    }
 
-      // -------------------------------------------------
-      // SEARCH EMAIL
-      // -------------------------------------------------
+    // -------------------------------------------------
+    // SEARCH ADDRESS
+    // -------------------------------------------------
 
-      if (String(email).trim()) {
-        query += `
-          AND s.email LIKE ?
-        `;
+    if (String(address).trim()) {
+      query += `
+        AND s.address LIKE ?
+      `;
 
-        params.push(
-          `%${String(email).trim()}%`
-        );
-      }
+      params.push(
+        `%${String(address).trim()}%`
+      );
+    }
 
-      // -------------------------------------------------
-      // SEARCH ADDRESS
-      // -------------------------------------------------
+    // -------------------------------------------------
+    // FILTER OWNER
+    // -------------------------------------------------
 
-      if (String(address).trim()) {
-        query += `
-          AND s.address LIKE ?
-        `;
-
-        params.push(
-          `%${String(address).trim()}%`
-        );
-      }
-
-      // -------------------------------------------------
-      // FILTER OWNER
-      // -------------------------------------------------
+    if (String(owner_id).trim()) {
+      const ownerId =
+        Number(owner_id);
 
       if (
-        String(owner_id).trim()
+        !Number.isInteger(ownerId) ||
+        ownerId <= 0
       ) {
-        const ownerId =
-          Number(owner_id);
-
-        if (
-          !Number.isInteger(
-            ownerId
-          ) ||
-          ownerId <= 0
-        ) {
-          return res.status(400).json({
-            message:
-              "Invalid owner ID",
-          });
-        }
-
-        query += `
-          AND s.owner_id = ?
-        `;
-
-        params.push(ownerId);
+        return res.status(400).json({
+          message:
+            "Invalid owner ID",
+        });
       }
 
-      // -------------------------------------------------
-      // GROUP
-      // -------------------------------------------------
-
       query += `
-        GROUP BY
-          s.id,
-          s.name,
-          s.email,
-          s.address,
-          s.owner_id,
-          u.name,
-          u.email
+        AND s.owner_id = ?
       `;
 
-      // -------------------------------------------------
-      // SORT
-      // -------------------------------------------------
-
-      query += `
-        ORDER BY
-          ${sortColumn}
-          ${sortOrder}
-      `;
-
-      // -------------------------------------------------
-      // EXECUTE
-      // -------------------------------------------------
-
-      const [stores] =
-        await db.query(
-          query,
-          params
-        );
-
-      // -------------------------------------------------
-      // FORMAT
-      // -------------------------------------------------
-
-      const formattedStores =
-        stores.map(
-          (store) => ({
-            id:
-              Number(store.id),
-
-            name:
-              store.name || "",
-
-            email:
-              store.email || "",
-
-            address:
-              store.address || "",
-
-            owner_id:
-              store.owner_id
-                ? Number(
-                    store.owner_id
-                  )
-                : null,
-
-            owner_name:
-              store.owner_name ||
-              "",
-
-            owner_email:
-              store.owner_email ||
-              "",
-
-            rating:
-              Number(
-                store.average_rating ||
-                  0
-              ),
-
-            total_ratings:
-              Number(
-                store.total_ratings ||
-                  0
-              ),
-          })
-        );
-
-      return res.json(
-        formattedStores
-      );
-    } catch (error) {
-      console.error(
-        "Get admin stores error:",
-        error
-      );
-
-      return res.status(500).json({
-        message:
-          "Unable to load stores",
-      });
+      params.push(ownerId);
     }
+
+    // -------------------------------------------------
+    // GROUP
+    // -------------------------------------------------
+
+    query += `
+      GROUP BY
+        s.id,
+        s.name,
+        s.email,
+        s.address,
+        s.owner_id,
+        u.name,
+        u.email
+    `;
+
+    // -------------------------------------------------
+    // SORT
+    // -------------------------------------------------
+
+    query += `
+      ORDER BY
+        ${sortColumn}
+        ${sortOrder}
+    `;
+
+    // -------------------------------------------------
+    // EXECUTE
+    // -------------------------------------------------
+
+    const [stores] =
+      await db.query(
+        query,
+        params
+      );
+
+    // -------------------------------------------------
+    // FORMAT
+    // -------------------------------------------------
+
+    const formattedStores =
+      stores.map((store) => ({
+        id: Number(store.id),
+
+        name: store.name || "",
+
+        email: store.email || "",
+
+        address:
+          store.address || "",
+
+        owner_id:
+          store.owner_id
+            ? Number(store.owner_id)
+            : null,
+
+        owner_name:
+          store.owner_name || "",
+
+        owner_email:
+          store.owner_email || "",
+
+        rating:
+          Number(
+            store.average_rating || 0
+          ),
+
+        total_ratings:
+          Number(
+            store.total_ratings || 0
+          ),
+      }));
+
+    return res.json(
+      formattedStores
+    );
+  } catch (error) {
+    console.error(
+      "Get admin stores error:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Unable to load stores",
+    });
   }
-);
+});
 
 // =====================================================
 // CREATE STORE
 // POST /api/admin/stores
 // =====================================================
 
-router.post(
-  "/stores",
-  async (req, res) => {
-    try {
-      const db = req.app.locals.db;
+router.post("/stores", async (req, res) => {
+  try {
+    const db = req.app.locals.db;
 
-      const {
+    const {
+      name,
+      email,
+      address,
+      owner_id,
+    } = req.body;
+
+    // -------------------------------------------------
+    // REQUIRED FIELDS
+    // -------------------------------------------------
+
+    if (
+      !name ||
+      !email ||
+      !address ||
+      !owner_id
+    ) {
+      return res.status(400).json({
+        message:
+          "Store name, email, address and owner are required",
+      });
+    }
+
+    // -------------------------------------------------
+    // CLEAN INPUT
+    // -------------------------------------------------
+
+    const cleanName =
+      String(name).trim();
+
+    const cleanEmail =
+      String(email)
+        .trim()
+        .toLowerCase();
+
+    const cleanAddress =
+      String(address).trim();
+
+    const ownerId =
+      Number(owner_id);
+
+    // -------------------------------------------------
+    // VALIDATE NAME
+    // -------------------------------------------------
+
+    if (
+      cleanName.length < 1 ||
+      cleanName.length > 60
+    ) {
+      return res.status(400).json({
+        message:
+          "Store name must be between 1 and 60 characters",
+      });
+    }
+
+    // -------------------------------------------------
+    // VALIDATE EMAIL
+    // -------------------------------------------------
+
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({
+        message:
+          "Please enter a valid store email address",
+      });
+    }
+
+    // -------------------------------------------------
+    // VALIDATE ADDRESS
+    // -------------------------------------------------
+
+    if (
+      cleanAddress.length < 1 ||
+      cleanAddress.length > 400
+    ) {
+      return res.status(400).json({
+        message:
+          "Address must be between 1 and 400 characters",
+      });
+    }
+
+    // -------------------------------------------------
+    // VALIDATE OWNER ID
+    // -------------------------------------------------
+
+    if (
+      !Number.isInteger(ownerId) ||
+      ownerId <= 0
+    ) {
+      return res.status(400).json({
+        message: "Invalid owner",
+      });
+    }
+
+    // -------------------------------------------------
+    // CHECK OWNER
+    // -------------------------------------------------
+
+    const [owners] = await db.query(
+      `
+      SELECT
+        id,
+        name,
+        email,
+        role
+      FROM users
+      WHERE id = ?
+      `,
+      [ownerId]
+    );
+
+    if (owners.length === 0) {
+      return res.status(404).json({
+        message:
+          "Store owner not found",
+      });
+    }
+
+    if (
+      owners[0].role !== "STORE_OWNER"
+    ) {
+      return res.status(400).json({
+        message:
+          "Selected user must have STORE_OWNER role",
+      });
+    }
+
+    // -------------------------------------------------
+    // CREATE STORE
+    // -------------------------------------------------
+
+    const [result] = await db.query(
+      `
+      INSERT INTO stores
+      (
         name,
         email,
         address,
-        owner_id,
-      } = req.body;
+        owner_id
+      )
+      VALUES (?, ?, ?, ?)
+      `,
+      [
+        cleanName,
+        cleanEmail,
+        cleanAddress,
+        ownerId,
+      ]
+    );
 
-      // -------------------------------------------------
-      // REQUIRED FIELDS
-      // -------------------------------------------------
+    // -------------------------------------------------
+    // RESPONSE
+    // -------------------------------------------------
 
-      if (
-        !name ||
-        !email ||
-        !address ||
-        !owner_id
-      ) {
-        return res.status(400).json({
-          message:
-            "Store name, email, address and owner are required",
-        });
-      }
+    return res.status(201).json({
+      message:
+        "Store created successfully",
 
-      // -------------------------------------------------
-      // CLEAN INPUT
-      // -------------------------------------------------
+      store: {
+        id: result.insertId,
 
-      const cleanName =
-        String(name).trim();
+        name: cleanName,
 
-      const cleanEmail =
-        String(email)
-          .trim()
-          .toLowerCase();
+        email: cleanEmail,
 
-      const cleanAddress =
-        String(address).trim();
+        address: cleanAddress,
 
-      const ownerId =
-        Number(owner_id);
+        owner_id: ownerId,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Create store error:",
+      error
+    );
 
-      // -------------------------------------------------
-      // VALIDATE NAME
-      // -------------------------------------------------
-
-      if (
-        cleanName.length < 1 ||
-        cleanName.length > 60
-      ) {
-        return res.status(400).json({
-          message:
-            "Store name must be between 1 and 60 characters",
-        });
-      }
-
-      // -------------------------------------------------
-      // VALIDATE EMAIL
-      // -------------------------------------------------
-
-      if (!emailRegex.test(cleanEmail)) {
-        return res.status(400).json({
-          message:
-            "Please enter a valid store email address",
-        });
-      }
-
-      // -------------------------------------------------
-      // VALIDATE ADDRESS
-      // -------------------------------------------------
-
-      if (
-        cleanAddress.length < 1 ||
-        cleanAddress.length > 400
-      ) {
-        return res.status(400).json({
-          message:
-            "Address must be between 1 and 400 characters",
-        });
-      }
-
-      // -------------------------------------------------
-      // VALIDATE OWNER ID
-      // -------------------------------------------------
-
-      if (
-        !Number.isInteger(ownerId) ||
-        ownerId <= 0
-      ) {
-        return res.status(400).json({
-          message: "Invalid owner",
-        });
-      }
-
-      // -------------------------------------------------
-      // CHECK OWNER
-      // -------------------------------------------------
-
-      const [owners] =
-        await db.query(
-          `
-          SELECT
-            id,
-            name,
-            email,
-            role
-          FROM users
-          WHERE id = ?
-          `,
-          [ownerId]
-        );
-
-      if (owners.length === 0) {
-        return res.status(404).json({
-          message:
-            "Store owner not found",
-        });
-      }
-
-      if (
-        owners[0].role !==
-        "OWNER"
-      ) {
-        return res.status(400).json({
-          message:
-            "Selected user must have OWNER role",
-        });
-      }
-
-      // -------------------------------------------------
-      // CREATE STORE
-      // -------------------------------------------------
-
-      const [result] =
-        await db.query(
-          `
-          INSERT INTO stores
-          (
-            name,
-            email,
-            address,
-            owner_id
-          )
-          VALUES (?, ?, ?, ?)
-          `,
-          [
-            cleanName,
-            cleanEmail,
-            cleanAddress,
-            ownerId,
-          ]
-        );
-
-      // -------------------------------------------------
-      // RESPONSE
-      // -------------------------------------------------
-
-      return res.status(201).json({
+    if (
+      error.code === "ER_DUP_ENTRY"
+    ) {
+      return res.status(409).json({
         message:
-          "Store created successfully",
-
-        store: {
-          id:
-            result.insertId,
-
-          name:
-            cleanName,
-
-          email:
-            cleanEmail,
-
-          address:
-            cleanAddress,
-
-          owner_id:
-            ownerId,
-        },
-      });
-    } catch (error) {
-      console.error(
-        "Create store error:",
-        error
-      );
-
-      if (
-        error.code === "ER_DUP_ENTRY"
-      ) {
-        return res.status(409).json({
-          message:
-            "Store with this information already exists",
-        });
-      }
-
-      return res.status(500).json({
-        message:
-          "Unable to create store",
+          "Store with this information already exists",
       });
     }
+
+    return res.status(500).json({
+      message:
+        "Unable to create store",
+    });
   }
-);
+});
 
 // =====================================================
 // UPDATE STORE
 // PUT /api/admin/stores/:id
 // =====================================================
 
-router.put(
-  "/stores/:id",
-  async (req, res) => {
-    try {
-      const db = req.app.locals.db;
+router.put("/stores/:id", async (req, res) => {
+  try {
+    const db = req.app.locals.db;
 
-      const storeId =
-        Number(req.params.id);
+    const storeId =
+      Number(req.params.id);
 
-      // -------------------------------------------------
-      // VALIDATE STORE ID
-      // -------------------------------------------------
+    // -------------------------------------------------
+    // VALIDATE STORE ID
+    // -------------------------------------------------
 
-      if (
-        !Number.isInteger(storeId) ||
-        storeId <= 0
-      ) {
-        return res.status(400).json({
-          message:
-            "Invalid store ID",
-        });
-      }
-
-      const {
-        name,
-        email,
-        address,
-        owner_id,
-      } = req.body;
-
-      // -------------------------------------------------
-      // REQUIRED FIELDS
-      // -------------------------------------------------
-
-      if (
-        !name ||
-        !email ||
-        !address ||
-        !owner_id
-      ) {
-        return res.status(400).json({
-          message:
-            "Store name, email, address and owner are required",
-        });
-      }
-
-      // -------------------------------------------------
-      // CLEAN INPUT
-      // -------------------------------------------------
-
-      const cleanName =
-        String(name).trim();
-
-      const cleanEmail =
-        String(email)
-          .trim()
-          .toLowerCase();
-
-      const cleanAddress =
-        String(address).trim();
-
-      const ownerId =
-        Number(owner_id);
-
-      // -------------------------------------------------
-      // VALIDATE NAME
-      // -------------------------------------------------
-
-      if (
-        cleanName.length < 1 ||
-        cleanName.length > 60
-      ) {
-        return res.status(400).json({
-          message:
-            "Store name must be between 1 and 60 characters",
-        });
-      }
-
-      // -------------------------------------------------
-      // VALIDATE EMAIL
-      // -------------------------------------------------
-
-      if (!emailRegex.test(cleanEmail)) {
-        return res.status(400).json({
-          message:
-            "Please enter a valid store email address",
-        });
-      }
-
-      // -------------------------------------------------
-      // VALIDATE ADDRESS
-      // -------------------------------------------------
-
-      if (
-        cleanAddress.length < 1 ||
-        cleanAddress.length > 400
-      ) {
-        return res.status(400).json({
-          message:
-            "Address must be between 1 and 400 characters",
-        });
-      }
-
-      // -------------------------------------------------
-      // VALIDATE OWNER
-      // -------------------------------------------------
-
-      if (
-        !Number.isInteger(ownerId) ||
-        ownerId <= 0
-      ) {
-        return res.status(400).json({
-          message: "Invalid owner",
-        });
-      }
-
-      // -------------------------------------------------
-      // CHECK STORE EXISTS
-      // -------------------------------------------------
-
-      const [stores] =
-        await db.query(
-          `
-          SELECT
-            id
-          FROM stores
-          WHERE id = ?
-          `,
-          [storeId]
-        );
-
-      if (stores.length === 0) {
-        return res.status(404).json({
-          message:
-            "Store not found",
-        });
-      }
-
-      // -------------------------------------------------
-      // CHECK OWNER
-      // -------------------------------------------------
-
-      const [owners] =
-        await db.query(
-          `
-          SELECT
-            id,
-            name,
-            email,
-            role
-          FROM users
-          WHERE id = ?
-          `,
-          [ownerId]
-        );
-
-      if (owners.length === 0) {
-        return res.status(404).json({
-          message:
-            "Store owner not found",
-        });
-      }
-
-      if (
-        owners[0].role !==
-        "OWNER"
-      ) {
-        return res.status(400).json({
-          message:
-            "Selected user must have OWNER role",
-        });
-      }
-
-      // -------------------------------------------------
-      // UPDATE STORE
-      // -------------------------------------------------
-
-      await db.query(
-        `
-        UPDATE stores
-        SET
-          name = ?,
-          email = ?,
-          address = ?,
-          owner_id = ?
-        WHERE id = ?
-        `,
-        [
-          cleanName,
-          cleanEmail,
-          cleanAddress,
-          ownerId,
-          storeId,
-        ]
-      );
-
-      // -------------------------------------------------
-      // RESPONSE
-      // -------------------------------------------------
-
-      return res.json({
+    if (
+      !Number.isInteger(storeId) ||
+      storeId <= 0
+    ) {
+      return res.status(400).json({
         message:
-          "Store updated successfully",
-
-        store: {
-          id:
-            storeId,
-
-          name:
-            cleanName,
-
-          email:
-            cleanEmail,
-
-          address:
-            cleanAddress,
-
-          owner_id:
-            ownerId,
-        },
-      });
-    } catch (error) {
-      console.error(
-        "Update store error:",
-        error
-      );
-
-      if (
-        error.code === "ER_DUP_ENTRY"
-      ) {
-        return res.status(409).json({
-          message:
-            "Store with this information already exists",
-        });
-      }
-
-      return res.status(500).json({
-        message:
-          "Unable to update store",
+          "Invalid store ID",
       });
     }
+
+    const {
+      name,
+      email,
+      address,
+      owner_id,
+    } = req.body;
+
+    // -------------------------------------------------
+    // REQUIRED FIELDS
+    // -------------------------------------------------
+
+    if (
+      !name ||
+      !email ||
+      !address ||
+      !owner_id
+    ) {
+      return res.status(400).json({
+        message:
+          "Store name, email, address and owner are required",
+      });
+    }
+
+    // -------------------------------------------------
+    // CLEAN INPUT
+    // -------------------------------------------------
+
+    const cleanName =
+      String(name).trim();
+
+    const cleanEmail =
+      String(email)
+        .trim()
+        .toLowerCase();
+
+    const cleanAddress =
+      String(address).trim();
+
+    const ownerId =
+      Number(owner_id);
+
+    // -------------------------------------------------
+    // VALIDATE NAME
+    // -------------------------------------------------
+
+    if (
+      cleanName.length < 1 ||
+      cleanName.length > 60
+    ) {
+      return res.status(400).json({
+        message:
+          "Store name must be between 1 and 60 characters",
+      });
+    }
+
+    // -------------------------------------------------
+    // VALIDATE EMAIL
+    // -------------------------------------------------
+
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({
+        message:
+          "Please enter a valid store email address",
+      });
+    }
+
+    // -------------------------------------------------
+    // VALIDATE ADDRESS
+    // -------------------------------------------------
+
+    if (
+      cleanAddress.length < 1 ||
+      cleanAddress.length > 400
+    ) {
+      return res.status(400).json({
+        message:
+          "Address must be between 1 and 400 characters",
+      });
+    }
+
+    // -------------------------------------------------
+    // VALIDATE OWNER
+    // -------------------------------------------------
+
+    if (
+      !Number.isInteger(ownerId) ||
+      ownerId <= 0
+    ) {
+      return res.status(400).json({
+        message: "Invalid owner",
+      });
+    }
+
+    // -------------------------------------------------
+    // CHECK STORE EXISTS
+    // -------------------------------------------------
+
+    const [stores] =
+      await db.query(
+        `
+        SELECT id
+        FROM stores
+        WHERE id = ?
+        `,
+        [storeId]
+      );
+
+    if (stores.length === 0) {
+      return res.status(404).json({
+        message:
+          "Store not found",
+      });
+    }
+
+    // -------------------------------------------------
+    // CHECK OWNER
+    // -------------------------------------------------
+
+    const [owners] =
+      await db.query(
+        `
+        SELECT
+          id,
+          name,
+          email,
+          role
+        FROM users
+        WHERE id = ?
+        `,
+        [ownerId]
+      );
+
+    if (owners.length === 0) {
+      return res.status(404).json({
+        message:
+          "Store owner not found",
+      });
+    }
+
+    if (
+      owners[0].role !==
+      "STORE_OWNER"
+    ) {
+      return res.status(400).json({
+        message:
+          "Selected user must have STORE_OWNER role",
+      });
+    }
+
+    // -------------------------------------------------
+    // UPDATE STORE
+    // -------------------------------------------------
+
+    await db.query(
+      `
+      UPDATE stores
+      SET
+        name = ?,
+        email = ?,
+        address = ?,
+        owner_id = ?
+      WHERE id = ?
+      `,
+      [
+        cleanName,
+        cleanEmail,
+        cleanAddress,
+        ownerId,
+        storeId,
+      ]
+    );
+
+    // -------------------------------------------------
+    // RESPONSE
+    // -------------------------------------------------
+
+    return res.json({
+      message:
+        "Store updated successfully",
+
+      store: {
+        id: storeId,
+
+        name: cleanName,
+
+        email: cleanEmail,
+
+        address: cleanAddress,
+
+        owner_id: ownerId,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Update store error:",
+      error
+    );
+
+    if (
+      error.code === "ER_DUP_ENTRY"
+    ) {
+      return res.status(409).json({
+        message:
+          "Store with this information already exists",
+      });
+    }
+
+    return res.status(500).json({
+      message:
+        "Unable to update store",
+    });
   }
-);
+});
 
 // =====================================================
 // DELETE STORE
@@ -1946,9 +1784,6 @@ router.delete(
 
       // -------------------------------------------------
       // DELETE STORE
-      //
-      // ratings.store_id should have
-      // ON DELETE CASCADE.
       // -------------------------------------------------
 
       await db.query(

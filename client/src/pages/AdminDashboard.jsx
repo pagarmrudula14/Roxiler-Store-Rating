@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
@@ -26,7 +27,10 @@ export default function AdminDashboard() {
   const [activeSection, setActiveSection] =
     useState("dashboard");
 
-  // User modal
+  // =====================================================
+  // USER MODAL
+  // =====================================================
+
   const [showUserForm, setShowUserForm] =
     useState(false);
 
@@ -41,7 +45,10 @@ export default function AdminDashboard() {
     role: "USER",
   });
 
-  // Store modal
+  // =====================================================
+  // STORE MODAL
+  // =====================================================
+
   const [showStoreForm, setShowStoreForm] =
     useState(false);
 
@@ -55,7 +62,10 @@ export default function AdminDashboard() {
     owner_id: "",
   });
 
-  // Search / sorting
+  // =====================================================
+  // USER SEARCH / SORTING
+  // =====================================================
+
   const [userSearch, setUserSearch] =
     useState("");
 
@@ -67,6 +77,10 @@ export default function AdminDashboard() {
 
   const [userOrder, setUserOrder] =
     useState("asc");
+
+  // =====================================================
+  // STORE SEARCH / SORTING
+  // =====================================================
 
   const [storeSearch, setStoreSearch] =
     useState("");
@@ -87,15 +101,32 @@ export default function AdminDashboard() {
         "/admin/dashboard"
       );
 
+      const data = response.data || {};
+
       setStats({
         totalUsers:
-          Number(response.data.totalUsers) || 0,
+          Number(
+            data.totalUsers ??
+              data.total_users ??
+              data.users ??
+              0
+          ) || 0,
 
         totalStores:
-          Number(response.data.totalStores) || 0,
+          Number(
+            data.totalStores ??
+              data.total_stores ??
+              data.stores ??
+              0
+          ) || 0,
 
         totalRatings:
-          Number(response.data.totalRatings) || 0,
+          Number(
+            data.totalRatings ??
+              data.total_ratings ??
+              data.ratings ??
+              0
+          ) || 0,
       });
     } catch (err) {
       console.error(
@@ -128,12 +159,42 @@ export default function AdminDashboard() {
         }
       );
 
-      setUsers(response.data || []);
+      // Backend may return:
+      // 1. []
+      // 2. { users: [] }
+      // 3. { data: [] }
+      // 4. { results: [] }
+      //
+      // Always keep React state as an array.
+
+      const responseData = response.data;
+
+      let usersArray = [];
+
+      if (Array.isArray(responseData)) {
+        usersArray = responseData;
+      } else if (
+        Array.isArray(responseData?.users)
+      ) {
+        usersArray = responseData.users;
+      } else if (
+        Array.isArray(responseData?.data)
+      ) {
+        usersArray = responseData.data;
+      } else if (
+        Array.isArray(responseData?.results)
+      ) {
+        usersArray = responseData.results;
+      }
+
+      setUsers(usersArray);
     } catch (err) {
       console.error(
         "Users error:",
         err
       );
+
+      setUsers([]);
 
       setError(
         err.response?.data?.message ||
@@ -159,12 +220,40 @@ export default function AdminDashboard() {
         }
       );
 
-      setStores(response.data || []);
+      // Backend may return:
+      // 1. []
+      // 2. { stores: [] }
+      // 3. { data: [] }
+      // 4. { results: [] }
+
+      const responseData = response.data;
+
+      let storesArray = [];
+
+      if (Array.isArray(responseData)) {
+        storesArray = responseData;
+      } else if (
+        Array.isArray(responseData?.stores)
+      ) {
+        storesArray = responseData.stores;
+      } else if (
+        Array.isArray(responseData?.data)
+      ) {
+        storesArray = responseData.data;
+      } else if (
+        Array.isArray(responseData?.results)
+      ) {
+        storesArray = responseData.results;
+      }
+
+      setStores(storesArray);
     } catch (err) {
       console.error(
         "Stores error:",
         err
       );
+
+      setStores([]);
 
       setError(
         err.response?.data?.message ||
@@ -546,10 +635,12 @@ export default function AdminDashboard() {
   // STORE OWNERS
   // =====================================================
 
-  const storeOwners = users.filter(
-    (item) =>
-      item.role === "STORE_OWNER"
-  );
+  const storeOwners = Array.isArray(users)
+    ? users.filter(
+        (item) =>
+          item.role === "STORE_OWNER"
+      )
+    : [];
 
   // =====================================================
   // LOADING
@@ -2663,3 +2754,4 @@ const styles = {
     marginBottom: "12px",
   },
 };
+

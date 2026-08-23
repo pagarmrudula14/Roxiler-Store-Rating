@@ -14,15 +14,15 @@ import axios from "axios";
 // same deployed domain.
 //
 // =====================================================
-
 const api = axios.create({
   baseURL:
-    import.meta.env.VITE_API_URL || "/api",
+    import.meta.env.VITE_API_URL || "http://localhost:5001/api",
 
   headers: {
     "Content-Type": "application/json",
   },
 });
+
 
 // =====================================================
 // ATTACH JWT TOKEN TO EVERY REQUEST

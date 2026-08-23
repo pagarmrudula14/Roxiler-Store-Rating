@@ -3,13 +3,23 @@ require("dotenv").config();
 const app = require("./app");
 const pool = require("./config/db");
 
-const PORT = process.env.PORT || 5000;
+// =====================================================
+// PORT
+// =====================================================
+
+// Local development:
+// PORT=5001 from server/.env
+//
+// Production:
+// Render automatically provides process.env.PORT
+
+const PORT = process.env.PORT || 5001;
 
 // =====================================================
 // DATABASE AVAILABLE TO APP
 // =====================================================
 
-// Make database available to all routes through
+// Make database available to all routes through:
 // req.app.locals.db
 
 app.locals.db = pool;
@@ -32,11 +42,15 @@ async function startServer() {
     // START EXPRESS SERVER
     // -------------------------------------------------
 
-    app.listen(PORT, () => {
-      console.log(
-        `Server running on http://localhost:${PORT}`
-      );
-    });
+    app.listen(
+      PORT,
+      "0.0.0.0",
+      () => {
+        console.log(
+          `Server running on port ${PORT}`
+        );
+      }
+    );
   } catch (error) {
     // -------------------------------------------------
     // DATABASE CONNECTION ERROR
