@@ -168,7 +168,7 @@ Submit Rating.          	✅ Supported
 Update Rating	           ✅ Supported
 Overall Store Rating	           ✅ Supported
 Average Rating.                  ✅ Supported
-User Rating per Store	   One rating record per user/store
+User Rating per Store	     One rating record per user/store
 
 🔐 Authentication & Authorization
 
@@ -271,19 +271,26 @@ https://roxiler-store-rating-j6fz.onrender.com
 
 
 
+---
+
 ## 📸 Screenshots
 
 ### Dashboard
-![Dashboard](./screenshots/Dashboard.png)
+
+![Dashboard](screenshots/Dashboard.png)
 
 ### Admin Panel
-![Admin Panel](./screenshots/Admin%20panel.png)
+
+![Admin Panel](screenshots/Admin%20panel.png)
 
 ### Normal User
-![Normal User](./screenshots/Normal%20user.png)
+
+![Normal User](screenshots/Normal%20user.png)
 
 ### User Management
-![User Management](./screenshots/User%20management.png)
+
+![User Management](screenshots/User%20management.png)
 
 ### Change Password
-![Change Password](./screenshots/Change%20password.png)
+
+![Change Password](screenshots/Change%20password.png)
