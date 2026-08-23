@@ -132,12 +132,11 @@ app.use(
   "/api/owner",
   ownerRoutes
 );
-
 // =====================================================
 // SERVE REACT FRONTEND
 // =====================================================
 
-// React production build will be generated at:
+// React production build path:
 // client/dist
 
 const clientDistPath = path.join(
@@ -145,35 +144,35 @@ const clientDistPath = path.join(
   "../client/dist"
 );
 
-app.use(
-  express.static(clientDistPath)
-);
+// Only serve the React frontend if the build exists.
+// This backend is deployed separately on Render,
+// so client/dist may not exist in this service.
 
-// =====================================================
-// REACT SPA FALLBACK
-// =====================================================
+if (require("fs").existsSync(clientDistPath)) {
+  app.use(
+    express.static(clientDistPath)
+  );
 
-// If the browser directly visits:
-// /login
-// /signup
-// /stores
-// /admin
-// /owner
-//
-// Express should return React's index.html.
+  // =====================================================
+  // REACT SPA FALLBACK
+  // =====================================================
 
-app.use((req, res, next) => {
-  if (
-    req.method === "GET" &&
-    !req.originalUrl.startsWith("/api/")
-  ) {
-    return res.status(404).json({
-  message: "Frontend is deployed separately"
-});
-  }
+  app.use((req, res, next) => {
+    if (
+      req.method === "GET" &&
+      !req.originalUrl.startsWith("/api/")
+    ) {
+      return res.sendFile(
+        path.join(
+          clientDistPath,
+          "index.html"
+        )
+      );
+    }
 
-  next();
-});
+    next();
+  });
+}
 
 // =====================================================
 // 404 HANDLER
