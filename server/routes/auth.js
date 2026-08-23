@@ -942,25 +942,18 @@ router.post("/login", async (req, res) => {
 
     });
 
-  } catch (error) {
+} catch (error) {
 
-    console.error(
+  console.error(
+    "Login error:",
+    error
+  );
 
-      "Login error:",
+  return res.status(500).json({
+    message: error.message || "Server error during login",
+  });
 
-      error
-
-    );
-
-    return res.status(500).json({
-
-      message:
-
-        "Server error during login",
-
-    });
-
-  }
+} 
 
 });
 
